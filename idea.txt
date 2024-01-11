@@ -1,0 +1,12 @@
+--version 1.0
+    - Write the Account Activity Class
+
+    - Write the Authentication and getting the access Token[done]
+    - Write the Bootstrap Authentication [done]
+    - Write the Chat Content function [done]
+
+    Information we are trying to get
+        - Get Account Activity like Buy,sells, Dividends etc
+        - Portfolio Positions, market value and the number of shares
+        - Get current open Positions
+        - Get the Gain/ Loss
