@@ -11,8 +11,14 @@ from icecream import ic  # used for printing
 
 class Authentication():
     def __init__(self):
-        #self.checksystemcookies
-        self.authcookies=""
+        self.available=False
+        self.available=self.isAccountavailable()
+    #---------------------------------------------------------
+    def isAccountavailable(self):
+        if os.getenv('M1_USER') and os.getenv('M1_PASS'):
+            return True
+        else:
+            return False
     #---------------------------------------------------------
     def get_credentials(self):
         '''
@@ -23,18 +29,25 @@ class Authentication():
             user to enter their username and password. Otherwise, it checks .Renviron for the
             credentials.
         '''
+        
         if os.isatty(0):  #if running an interactive session 
-            username=input("Enter Apex Username: ")
-            password=getpass.getpass("Apex password: ")
+            try:
+                username=input("Enter M1 Finane Username: ")
+                password=getpass.getpass("M1 Finance password: ")
+                os.environ['M1_USER'] = username
+                os.environ['M1_PASS'] = password
+                self.available=True
+            except Exception as e:
+                ic(e)
         else:
             print("Checking environment variables for username and password...")
-            username = os.getenv("APEX_USER")
-            password = os.getenv("APEX_PASS")
-        
+            username = os.getenv("M1_USER")
+            password = os.getenv("M1_PASS")
+    
         
         if not username or not password:
             raise ValueError("Could not find username and password. "
-                         "Please set up the following environment variables for non-interactive sessions: APEX_USER, APEX_PASS")
+                         "Please set up the following environment variables for non-interactive sessions: M1_USER, M1_PASS")
         return {
             "username":username,
             "password":password,
@@ -47,33 +60,37 @@ class Authentication():
             @details
             This function checks the website is working and if anything is blocking the website to not work
         '''
-        url = 'https://lens.m1.com/graphql'
-        
-        payload={
-            "operationName": "CheckSystemStatus",
-            "variables": {},
-            "query": "query CheckSystemStatus{\n system{\n version\n status\n statusMessage\n isStatusBlocking\n blockedFunctionality\n __typename\n }\n }"
-        }
-        
-        header= {
-            "authority": "lens.m1.com",
-            "accept": "*/*",
-            "origin": "https://dashboard.m1.com",
-            "referer": "https://dashboard.m1.com/",
-        }
-        response = requests.post(url, json=payload, headers=header)
-        
-        if response.status_code != 200:
-            raise Exception(
-                f"ERROR: Response returned status code {response.status_code}. Check your credentials and try again."
-            )
-        
-        ic(response.json())
-        ic(response.cookies)
-        ic(response.content)
-        print(response.cookies.get("__cf_bm"))
-        
-        return response.cookies
+        try:
+            url = 'https://lens.m1.com/graphql'
+            
+            payload={
+                "operationName": "CheckSystemStatus",
+                "variables": {},
+                "query": "query CheckSystemStatus{\n system{\n version\n status\n statusMessage\n isStatusBlocking\n blockedFunctionality\n __typename\n }\n }"
+            }
+            
+            header= {
+                "authority": "lens.m1.com",
+                "accept": "*/*",
+                "origin": "https://dashboard.m1.com",
+                "referer": "https://dashboard.m1.com/",
+            }
+            response = requests.post(url, json=payload, headers=header)
+            
+            if response.status_code != 200:
+                raise Exception(
+                    f"ERROR: Response returned status code {response.status_code}. Check your credentials and try again."
+                )
+            
+            ic(response.json())
+            ic(response.cookies)
+            ic(response.content)
+            print(response.cookies.get("__cf_bm"))
+            
+            return response.cookies
+        except Exception as e:
+            ic(e)
+            ic("Please Check Connection")
     #---------------------------------------------------------
     def get_auth_token(self):
         '''
@@ -85,6 +102,8 @@ class Authentication():
             
         '''
         credentials= self.get_credentials()     #get the users credentials
+        if not credentials:
+            return
         
         url = 'https://lens.m1.com/graphql'
         
@@ -177,10 +196,14 @@ class Authentication():
         
             @details
             This function verifies the authentication token
+            
+            @return Add the user correletion key to the environment
         '''
         url = 'https://lens.m1.com/graphql'
         
         M1_token = os.getenv("M1_token")
+        if not M1_token:
+            return
         
         payload={
             "operationName": "ChatContext",
@@ -203,21 +226,43 @@ class Authentication():
                 f"ERROR: Response returned status code {response.status_code}. Check your credentials and try again."
             )
         
-        ic(response.json())  
+        # Parse the response data and get the correltion key
+        ic(response.json()) 
+        df = pd.DataFrame(response.json())
+        new_df=self.parse_chat_context(df) 
+        
+        # Add the user correlation key to the environment
+        if new_df:
+            os.environ['correlationKey']=new_df
     #--------------------------------------------------------- 
+    def parse_chat_context(self,df:pd.DataFrame):
+        '''
+           parse the bootstrap authetication response
+           Add the user correletion key to the environment
+        '''
+        new_df=df['data']['viewer']['user']
+        ic(new_df.keys())   #ID, Username, Correlaationkey,isPrimaryEmaailVerified
+        return new_df['correlationKey']
+    #---------------------------------------------------------    
     def get_bootstrap_auth(self):
         '''
             Another Layer of verification 
         
             @details
             This function verifies the authentication token
+            
+            @return Get the User ID that is important for getting account activities
+                - Also returns the Other types of acccount like saving,Borrowing account etc
         '''
         url = 'https://lens.m1.com/graphql'
         
         M1_token = os.getenv("M1_token")
         
+        if not M1_token :
+            return
+        
         payload={
-            "operationName": "ChatContext",
+            "operationName": "BootstrapAuthedUser",
             "variables": {},
             "query":"query BootstrapAuthedUser {\n  viewer {\n    accounts(first: 20, filterStatus: [NEW, OPENED, REJECTED, CLOSED]) {\n      edges {\n        node {\n          id\n          isActive\n          registration\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    borrow {\n      borrowAccounts {\n        edges {\n          node {\n            id\n            hasBorrowedBefore\n            __typename\n          }\n          __typename\n        }\n        __typename\n      }\n      personalLoans {\n        loans {\n          edges {\n            node {\n              id\n              status\n              __typename\n            }\n            __typename\n          }\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    spend {\n      currentSpendAccounts {\n        id\n        __typename\n      }\n      __typename\n    }\n    credit {\n      activeAccount {\n        id\n        __typename\n      }\n      __typename\n    }\n    id\n    user {\n      correlationKey\n      data(keys: [\"watchlist\"]) {\n        key\n        value\n        __typename\n      }\n      username\n      __typename\n    }\n    save {\n      savings {\n        hasSavingsAccounts\n        savingsAccounts {\n          edges {\n            node {\n              id\n              __typename\n            }\n            __typename\n          }\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    featureFlags {\n      hasFeature(keys: [\"M1_EMPLOYEE\"])\n      __typename\n    }\n    __typename\n  }\n}"
         }
@@ -237,9 +282,34 @@ class Authentication():
                 f"ERROR: Response returned status code {response.status_code}. Check your credentials and try again."
             )
         
-        ic(response.json())  
-    #--------------------------------------------------------- 
+        #Parse the accountID and add it the os environment 
+        ic(response.json())
+        df = pd.DataFrame(response.json())
+        new_df=self.parse_bootstrap_auth(df) 
         
+        if new_df:
+            os.environ['accountID']= new_df
+    #--------------------------------------------------------- 
+    def parse_bootstrap_auth(self,df:pd.DataFrame):
+        '''
+           parse the bootstrap authetication response
+           Add the AccountID from
+        '''
+        new_df=df['data']['viewer']['accounts']['edges']
+        accountID=new_df[0]['node']['id']
+        ic(accountID)
+        return accountID
+    #--------------------------------------------------------- 
+    def run(self):
+        self.checksystemstatus()
+        self.get_auth_token()
+        self.get_chat_context()
+        self.get_bootstrap_auth()
+
+
+class Reauthentication():
+    def __init__(self):
+        pass
         
         
 
@@ -249,5 +319,6 @@ if __name__ =="__main__":
     cookies=auth.checksystemstatus()
     auth.get_auth_token()
     auth.get_chat_context()
+    auth.get_bootstrap_auth()
 
 
