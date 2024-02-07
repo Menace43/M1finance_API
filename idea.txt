@@ -1,7 +1,11 @@
 --version 1.0
+    -- To Do
     - Write the Unrealized open position with its value,Gain etc
     - Write the Account Activity Class
+    - Look into the data parsing in get_investmentpage
 
+
+   -- Done
     - Write the Authentication and getting the access Token[done]
     - Write the Bootstrap Authentication [done]
     - Write the Chat Content function [done]

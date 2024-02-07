@@ -32,18 +32,21 @@ class Authentication():
         
         if os.isatty(0):  #if running an interactive session 
             try:
-                username=input("Enter M1 Finane Username: ")
-                password=getpass.getpass("M1 Finance password: ")
-                os.environ['M1_USER'] = username
-                os.environ['M1_PASS'] = password
-                self.available=True
+                if self.available:
+                    username = os.getenv("M1_USER")
+                    password = os.getenv("M1_PASS")
+                else:
+                    username=input("Enter M1 Finance Username: ")
+                    password=getpass.getpass("M1 Finance password: ")
+                    os.environ['M1_USER'] = username
+                    os.environ['M1_PASS'] = password
             except Exception as e:
                 ic(e)
         else:
             print("Checking environment variables for username and password...")
             username = os.getenv("M1_USER")
             password = os.getenv("M1_PASS")
-    
+        
         
         if not username or not password:
             raise ValueError("Could not find username and password. "
@@ -159,6 +162,7 @@ class Authentication():
         
         return {
             "user_id": view_df['user']['id'],
+            "user_id_correlationKey": view_df['user']['correlationKey'],
             "didSucceed": res_df['didSucceed'],
             "AccessToken": AccToken_df,
             "RefreshToken": refToken_df
